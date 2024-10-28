@@ -1,45 +1,82 @@
-{ pkgs, lib, config, inputs, ... }:
-
 {
-  # https://devenv.sh/basics/
-  env.GREET = "devenv";
+  pkgs,
+  lib,
+  inputs,
+  config,
+  ...
+}:
+let
+  pkgs-mailpit = import inputs.nixpkgs-mailpit {
+    system = pkgs.stdenv.system;
+  };
 
-  # https://devenv.sh/packages/
-  packages = [ pkgs.git ];
+  mailpitSmtpSocketPath = "${config.env.DEVENV_RUNTIME}/mp-smtp.sock";
+  mailpitUiSocketPath = "${config.env.DEVENV_RUNTIME}/mp-http.sock";
+in
+{
+  dotenv.enable = true;
 
-  # https://devenv.sh/languages/
-  # languages.rust.enable = true;
-
-  # https://devenv.sh/processes/
-  # processes.cargo-watch.exec = "cargo-watch";
-
-  # https://devenv.sh/services/
-  # services.postgres.enable = true;
-
-  # https://devenv.sh/scripts/
-  scripts.hello.exec = ''
-    echo hello from $GREET
-  '';
+  # Environment variables
+  env.MAILER_DSN = lib.mkForce "sendmail://default?command=${config.services.mailpit.package}/bin/mailpit%20sendmail%20-S%20unix:${mailpitSmtpSocketPath}%20-bs";
 
   enterShell = ''
-    hello
-    git --version
+    test -d vendor || composer install
   '';
 
-  # https://devenv.sh/tasks/
-  # tasks = {
-  #   "myproj:setup".exec = "mytool build";
-  #   "devenv:enterShell".after = [ "myproj:setup" ];
-  # };
+  services.mailpit = {
+    enable = true;
+    package = pkgs-mailpit.mailpit;
+    smtpListenAddress = "unix:${mailpitSmtpSocketPath}:660";
+    uiListenAddress = "unix:${mailpitUiSocketPath}:660";
+    additionalArgs = [
+      "--webroot=/mailpit/"
+    ];
+  };
 
-  # https://devenv.sh/tests/
-  enterTest = ''
-    echo "Running tests"
-    git --version | grep --color=auto "${pkgs.git.version}"
-  '';
+  languages.php = {
+    enable = true;
 
-  # https://devenv.sh/pre-commit-hooks/
-  # pre-commit.hooks.shellcheck.enable = true;
+    fpm.pools.web.settings = {
+      # Based on symfony-cli
+      # https://github.com/symfony-cli/symfony-cli/blob/9ad7d616f77a3158f8289c23f7387aa7f590bf53/local/php/fpm.go
 
-  # See full reference at https://devenv.sh/reference/options/
+      "clear_env" = "no";
+      "pm" = "dynamic";
+      "pm.max_children" = 10;
+      "pm.start_servers" = 2;
+      "pm.min_spare_servers" = 1;
+      "pm.max_spare_servers" = 10;
+
+      "catch_workers_output" = "yes";
+
+      "env['LC_ALL']" = "C";
+    };
+  };
+
+  services.caddy = {
+    enable = true;
+
+    virtualHosts = {
+      ":8000" = {
+        extraConfig = ''
+          redir /mailpit /mailpit/
+          handle_path /mailpit/* {
+            rewrite * /mailpit{path}
+            reverse_proxy unix/${mailpitUiSocketPath}
+          }
+
+          root * public
+
+          # Be careful! The full path to a socket can have a maximum of 107 characters.
+          # Everything after is sliced of.
+          php_fastcgi "unix/${config.languages.php.fpm.pools.web.socket}"
+
+          file_server
+
+          encode zstd gzip
+        '';
+      };
+    };
+  };
 }
+

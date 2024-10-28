@@ -66,6 +66,21 @@
         "type": "github"
       }
     },
+    "nixpkgs-mailpit": {
+      "locked": {
+        "lastModified": 1730104038,
+        "owner": "RafaelKr",
+        "repo": "nixpkgs",
+        "rev": "cadbd79f3cd276ed97831cb246efe9df6dcf5f4d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "RafaelKr",
+        "ref": "auto-update/mailpit",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
     "nixpkgs-stable": {
       "locked": {
         "lastModified": 1729973466,
@@ -107,6 +122,7 @@
       "inputs": {
         "devenv": "devenv",
         "nixpkgs": "nixpkgs",
+        "nixpkgs-mailpit": "nixpkgs-mailpit",
         "pre-commit-hooks": "pre-commit-hooks"
       }
     }
